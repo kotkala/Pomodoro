@@ -1,13 +1,13 @@
 import { View, StyleSheet } from 'react-native';
+import Settings from '../components/Settings';
 import { useTheme } from '../context/ThemeContext';
-import Timer from '../components/Timer';
 
-export default function PomodoroScreen() {
+export default function SettingsScreen() {
   const theme = useTheme();
   
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <Timer />
+      <Settings />
     </View>
   );
 }
@@ -16,4 +16,4 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-});
+}); 
