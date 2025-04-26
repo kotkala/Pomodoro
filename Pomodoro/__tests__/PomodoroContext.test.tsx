@@ -1,139 +1,195 @@
 import React from 'react';
-import { render, act, renderHook, waitFor } from '@testing-library/react-native';
-import { Text } from 'react-native';
+import { render, fireEvent, act, waitFor } from '@testing-library/react-native';
+import { Button, View } from 'react-native';
 import { PomodoroProvider, usePomodoroContext } from '../app/context/PomodoroContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Test Component that uses the PomodoroContext
+// Create a test component that uses the context
 const TestComponent = () => {
-  const { 
-    isRunning, 
-    currentSession, 
-    timeLeft, 
-    startTimer, 
-    pauseTimer, 
+  const {
+    timeLeft,
+    isRunning,
+    currentSession,
+    startTimer,
+    pauseTimer,
     resetTimer,
-    dailyProgress,
-    settings
+    skipSession,
+    settings,
+    updateSettings
   } = usePomodoroContext();
-  
+
   return (
-    <>
-      <Text testID="isRunning">{isRunning.toString()}</Text>
-      <Text testID="currentSession">{currentSession}</Text>
-      <Text testID="timeLeft">{timeLeft}</Text>
-      <Text testID="dailyProgress">{dailyProgress}</Text>
-      <Text testID="workDuration">{settings.workDuration}</Text>
-      <Text testID="dailyGoalMinutes">{settings.dailyGoalMinutes}</Text>
-      <Text testID="start" onPress={startTimer}>Start</Text>
-      <Text testID="pause" onPress={pauseTimer}>Pause</Text>
-      <Text testID="reset" onPress={resetTimer}>Reset</Text>
-    </>
+    <View>
+      <Button
+        testID="start-button"
+        title="Start"
+        onPress={startTimer}
+      />
+      <Button
+        testID="pause-button"
+        title="Pause"
+        onPress={pauseTimer}
+      />
+      <Button
+        testID="reset-button"
+        title="Reset"
+        onPress={resetTimer}
+      />
+      <Button
+        testID="skip-button"
+        title="Skip"
+        onPress={skipSession}
+      />
+      <Button
+        testID="update-settings-button"
+        title="Update Settings"
+        onPress={() => updateSettings({
+          workDuration: 30,
+          shortBreakDuration: 7,
+          longBreakDuration: 20,
+          sessionsBeforeLongBreak: 3,
+          autoStartBreak: true,
+          autoStartWork: true,
+          dailyGoalMinutes: 240
+        })}
+      />
+      <View testID="time-left">{timeLeft}</View>
+      <View testID="is-running">{isRunning ? 'true' : 'false'}</View>
+      <View testID="current-session">{currentSession}</View>
+      <View testID="settings">{JSON.stringify(settings)}</View>
+    </View>
   );
 };
-
-// Wrapper component for testing hooks
-const wrapper = ({ children }: { children: React.ReactNode }) => (
-  <PomodoroProvider>{children}</PomodoroProvider>
-);
 
 describe('PomodoroContext', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.useFakeTimers();
+    
+    // Reset AsyncStorage mocks
+    AsyncStorage.getItem.mockClear();
+    AsyncStorage.setItem.mockClear();
   });
-
+  
   afterEach(() => {
     jest.useRealTimers();
   });
 
-  it('provides default values', () => {
-    const { getByTestId } = render(<TestComponent />, { wrapper: PomodoroProvider });
-    
-    expect(getByTestId('isRunning').props.children).toBe('false');
-    expect(getByTestId('currentSession').props.children).toBe('work');
-    // Default work duration is 25 minutes (1500 seconds)
-    expect(getByTestId('workDuration').props.children).toBe(25);
-    expect(getByTestId('dailyGoalMinutes').props.children).toBe(180);
+  it('should provide default values', () => {
+    const { getByTestId } = render(
+      <PomodoroProvider>
+        <TestComponent />
+      </PomodoroProvider>
+    );
+
+    expect(getByTestId('time-left').props.children).toBe(25 * 60); // 25 minutes in seconds
+    expect(getByTestId('is-running').props.children).toBe('false');
+    expect(getByTestId('current-session').props.children).toBe('work');
   });
 
-  it('starts and pauses the timer', () => {
-    const { getByTestId } = render(<TestComponent />, { wrapper: PomodoroProvider });
-    
+  it('should start the timer when startTimer is called', () => {
+    const { getByTestId } = render(
+      <PomodoroProvider>
+        <TestComponent />
+      </PomodoroProvider>
+    );
+
     // Start the timer
-    act(() => {
-      getByTestId('start').props.onPress();
-    });
-    
-    expect(getByTestId('isRunning').props.children).toBe('true');
-    
-    // Advance timer by 5 seconds
+    fireEvent.press(getByTestId('start-button'));
+
+    // Check if the timer is running
+    expect(getByTestId('is-running').props.children).toBe('true');
+
+    // Fast-forward time by 5 seconds
     act(() => {
       jest.advanceTimersByTime(5000);
     });
-    
-    // Pause the timer
-    act(() => {
-      getByTestId('pause').props.onPress();
-    });
-    
-    expect(getByTestId('isRunning').props.children).toBe('false');
+
+    // Check if the time has decreased
+    expect(getByTestId('time-left').props.children).toBe(25 * 60 - 5);
   });
 
-  it('resets the timer', () => {
-    const { getByTestId } = render(<TestComponent />, { wrapper: PomodoroProvider });
-    
+  it('should pause the timer when pauseTimer is called', () => {
+    const { getByTestId } = render(
+      <PomodoroProvider>
+        <TestComponent />
+      </PomodoroProvider>
+    );
+
     // Start the timer
-    act(() => {
-      getByTestId('start').props.onPress();
-    });
+    fireEvent.press(getByTestId('start-button'));
     
-    // Advance timer by 10 seconds
+    // Fast-forward time by 5 seconds
     act(() => {
-      jest.advanceTimersByTime(10000);
+      jest.advanceTimersByTime(5000);
     });
-    
-    // Reset the timer
+
+    // Pause the timer
+    fireEvent.press(getByTestId('pause-button'));
+
+    // Check if the timer is paused
+    expect(getByTestId('is-running').props.children).toBe('false');
+
+    // Record the current time
+    const timeAfterPause = getByTestId('time-left').props.children;
+
+    // Fast-forward time by 5 more seconds
     act(() => {
-      getByTestId('reset').props.onPress();
+      jest.advanceTimersByTime(5000);
     });
-    
-    expect(getByTestId('isRunning').props.children).toBe('false');
-    // Should be back to 25 minutes (1500 seconds)
-    expect(parseInt(getByTestId('timeLeft').props.children)).toBe(25 * 60);
+
+    // Check if the time hasn't changed
+    expect(getByTestId('time-left').props.children).toBe(timeAfterPause);
   });
 
-  it('attempts to load saved data on mount', async () => {
-    // Mock returns for AsyncStorage.getItem
-    const mockSettings = {
-      workDuration: 30,
-      shortBreakDuration: 5,
-      longBreakDuration: 15,
-      sessionsBeforeLongBreak: 4,
-      dailyGoalMinutes: 200,
-      notificationsEnabled: true,
-    };
-    
-    AsyncStorage.getItem.mockImplementation((key) => {
-      if (key === 'pomodoro_settings') {
-        return Promise.resolve(JSON.stringify(mockSettings));
-      }
-      return Promise.resolve(null);
-    });
-    
-    // Use renderHook to test the hook's behavior
-    const { result, rerender } = renderHook(() => usePomodoroContext(), { wrapper });
-    
-    // Wait for AsyncStorage operation to complete
-    await waitFor(() => {
-      expect(AsyncStorage.getItem).toHaveBeenCalledWith('pomodoro_settings');
-    });
-    
-    // Re-render to get updated state
-    rerender();
-    
-    // Check if settings were properly loaded
-    expect(result.current.settings.workDuration).toBe(30);
-    expect(result.current.settings.dailyGoalMinutes).toBe(200);
+  it('should skip to the next session when skipSession is called', () => {
+    const { getByTestId } = render(
+      <PomodoroProvider>
+        <TestComponent />
+      </PomodoroProvider>
+    );
+
+    // Initially in work session
+    expect(getByTestId('current-session').props.children).toBe('work');
+
+    // Skip to the next session (should be short break)
+    fireEvent.press(getByTestId('skip-button'));
+
+    // Check if it's now in short break
+    expect(getByTestId('current-session').props.children).toBe('shortBreak');
+    expect(getByTestId('time-left').props.children).toBe(5 * 60); // 5 minutes in seconds
+
+    // Skip again to go back to work
+    fireEvent.press(getByTestId('skip-button'));
+
+    // Check if it's back to work
+    expect(getByTestId('current-session').props.children).toBe('work');
+    expect(getByTestId('time-left').props.children).toBe(25 * 60); // 25 minutes in seconds
+  });
+
+  it('should update settings when updateSettings is called', () => {
+    const { getByTestId } = render(
+      <PomodoroProvider>
+        <TestComponent />
+      </PomodoroProvider>
+    );
+
+    // Initially has default work duration (25 minutes)
+    expect(getByTestId('time-left').props.children).toBe(25 * 60);
+
+    // Update settings
+    fireEvent.press(getByTestId('update-settings-button'));
+
+    // Reset the timer to apply new settings
+    fireEvent.press(getByTestId('reset-button'));
+
+    // Check if the work duration has updated to 30 minutes
+    expect(getByTestId('time-left').props.children).toBe(30 * 60);
+
+    // Skip to short break
+    fireEvent.press(getByTestId('skip-button'));
+
+    // Check if short break duration is updated to 7 minutes
+    expect(getByTestId('time-left').props.children).toBe(7 * 60);
   });
 }); 

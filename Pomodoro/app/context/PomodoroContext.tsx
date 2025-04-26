@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useColorScheme, Platform, AppState, AppStateStatus } from 'react-native';
 import * as Notifications from 'expo-notifications';
@@ -138,23 +138,20 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
   
   // App state for tracking when app comes to foreground
-  useEffect(() => {
-    const subscription = AppState.addEventListener(
-      'change',
-      handleAppStateChange
-    );
-    
-    return () => {
-      subscription.remove();
-    };
-  }, []);
-  
-  const handleAppStateChange = (nextAppState: AppStateStatus) => {
+  const handleAppStateChange = useCallback((nextAppState: AppStateStatus) => {
     if (nextAppState === 'active') {
       // Check if day has changed and reset daily progress if needed
       checkAndResetDailyProgress();
     }
-  };
+  }, []);
+  
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    
+    return () => {
+      subscription.remove();
+    };
+  }, [handleAppStateChange]);
   
   // Setup notifications
   useEffect(() => {
@@ -180,7 +177,7 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
   }, [settings.notificationsEnabled]);
   
-  const registerForPushNotificationsAsync = async () => {
+  const registerForPushNotificationsAsync = useCallback(async () => {
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
         name: 'default',
@@ -202,9 +199,9 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       console.log('Permission not granted for notifications');
       return;
     }
-  };
+  }, []);
   
-  const scheduleRandomReminder = async () => {
+  const scheduleRandomReminder = useCallback(async () => {
     // Cancel any existing notifications first
     await Notifications.cancelAllScheduledNotificationsAsync();
     
@@ -240,120 +237,110 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         seconds: secondsUntilNotification,
       },
     });
-  };
+  }, [settings.notificationsEnabled, dailyProgress, settings.dailyGoalMinutes]);
   
   // Check if day has changed and reset daily progress if needed
-  const checkAndResetDailyProgress = async () => {
+  const checkAndResetDailyProgress = useCallback(async () => {
     try {
       const lastDateStr = await AsyncStorage.getItem(LAST_DATE_KEY);
       const currentDate = new Date().toISOString().split('T')[0]; // Get current date as YYYY-MM-DD
       
-      if (lastDateStr && lastDateStr !== currentDate) {
-        // It's a new day, check if goal was completed yesterday
-        const previousDate = new Date(lastDateStr);
-        const yesterdayDate = new Date();
-        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-        
-        // Check if previous date was yesterday (not just different)
-        const isYesterday = previousDate.getDate() === yesterdayDate.getDate() &&
-                            previousDate.getMonth() === yesterdayDate.getMonth() &&
-                            previousDate.getFullYear() === yesterdayDate.getFullYear();
-        
-        // Update streak based on yesterday's goal completion
-        const goalAchieved = await AsyncStorage.getItem(DAILY_PROGRESS_KEY);
-        
-        if (goalAchieved && parseInt(goalAchieved) >= settings.dailyGoalMinutes && isYesterday) {
-          // Streak continues
-          updateStreak(true);
-        } else if (!isYesterday) {
-          // More than one day passed, reset streak
-          updateStreak(false);
-        }
-        
-        // Reset for new day
+      if (lastDateStr !== currentDate) {
+        // Day has changed, reset daily progress
         setDailyProgress(0);
         await AsyncStorage.setItem(DAILY_PROGRESS_KEY, '0');
         await AsyncStorage.setItem(LAST_DATE_KEY, currentDate);
-      } else if (!lastDateStr) {
-        // First time app is used, just set the date
-        await AsyncStorage.setItem(LAST_DATE_KEY, currentDate);
+        
+        // Update streak if needed
+        if (lastDateStr) {
+          const lastDate = new Date(lastDateStr);
+          const today = new Date(currentDate);
+          const timeDiff = today.getTime() - lastDate.getTime();
+          const dayDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
+          
+          // If more than 1 day has passed, break the streak
+          if (dayDiff > 1) {
+            await updateStreak(false);
+          }
+        }
       }
     } catch (error) {
-      console.error('Error checking day change:', error);
+      console.error("Error checking daily progress:", error);
     }
-  };
+  }, []);
   
-  // Update streak count
-  const updateStreak = async (goalCompleted: boolean) => {
+  // Update streak data
+  const updateStreak = useCallback(async (goalCompleted: boolean) => {
     try {
       const newStreak = { ...streak };
-      const today = new Date().toISOString().split('T')[0]; // Get current date as YYYY-MM-DD
+      const currentDate = new Date().toISOString().split('T')[0];
       
       if (goalCompleted) {
-        // Goal completed, increment streak
-        newStreak.currentStreak++;
-        newStreak.lastCompletedDate = today;
-        
-        // Update highest streak if current streak is higher
-        if (newStreak.currentStreak > newStreak.highestStreak) {
-          newStreak.highestStreak = newStreak.currentStreak;
+        // If goal was completed today and not already counted
+        if (newStreak.lastCompletedDate !== currentDate) {
+          newStreak.currentStreak += 1;
+          
+          // Update highest streak if needed
+          if (newStreak.currentStreak > newStreak.highestStreak) {
+            newStreak.highestStreak = newStreak.currentStreak;
+          }
+          
+          newStreak.lastCompletedDate = currentDate;
         }
       } else {
-        // Goal missed, reset streak
+        // Reset streak if goal wasn't completed
         newStreak.currentStreak = 0;
       }
       
       setStreak(newStreak);
       await AsyncStorage.setItem(STREAK_STORAGE_KEY, JSON.stringify(newStreak));
     } catch (error) {
-      console.error('Error updating streak:', error);
+      console.error("Error updating streak:", error);
     }
-  };
+  }, [streak]);
   
-  // Check if daily goal has been met after each session
-  const checkDailyGoal = async (addedMinutes: number) => {
+  // Check if daily goal has been reached
+  const checkDailyGoal = useCallback(async (addedMinutes: number) => {
     try {
-      const newProgress = dailyProgress + addedMinutes;
-      setDailyProgress(newProgress);
-      await AsyncStorage.setItem(DAILY_PROGRESS_KEY, newProgress.toString());
+      const newDailyProgress = dailyProgress + addedMinutes;
+      setDailyProgress(newDailyProgress);
       
-      // If goal just reached with this session
-      if (dailyProgress < settings.dailyGoalMinutes && newProgress >= settings.dailyGoalMinutes) {
-        // Goal achieved for today
-        const today = new Date().toISOString().split('T')[0]; // Get current date as YYYY-MM-DD
+      await AsyncStorage.setItem(DAILY_PROGRESS_KEY, newDailyProgress.toString());
+      
+      // Update current date
+      const currentDate = new Date().toISOString().split('T')[0];
+      await AsyncStorage.setItem(LAST_DATE_KEY, currentDate);
+      
+      // Check if daily goal has been reached for the first time today
+      if (dailyProgress < settings.dailyGoalMinutes && 
+          newDailyProgress >= settings.dailyGoalMinutes) {
+        // Goal reached for the first time today
+        await updateStreak(true);
         
-        // Check if streak already updated today
-        if (streak.lastCompletedDate !== today) {
-          updateStreak(true);
-          
-          // Show congratulation notification
+        // Show congratulatory notification
+        if (settings.notificationsEnabled) {
           await Notifications.scheduleNotificationAsync({
             content: {
-              title: "Daily Goal Achieved! 🎉",
-              body: `Congratulations! You've reached your daily goal of ${settings.dailyGoalMinutes} minutes. Current streak: ${streak.currentStreak + 1} days!`,
+              title: "Daily Goal Reached! 🎉",
+              body: `Great job! You've completed your ${settings.dailyGoalMinutes} minute focus goal for today!`,
             },
-            trigger: null, // Show immediately
+            trigger: null, // Send immediately
           });
         }
       }
     } catch (error) {
-      console.error('Error checking daily goal:', error);
+      console.error("Error checking daily goal:", error);
     }
-  };
+  }, [dailyProgress, settings.dailyGoalMinutes, settings.notificationsEnabled, updateStreak]);
   
-  // Load saved data on component mount
+  // Load saved data from AsyncStorage
   useEffect(() => {
     const loadSavedData = async () => {
       try {
         // Load settings
         const savedSettings = await AsyncStorage.getItem(SETTINGS_STORAGE_KEY);
         if (savedSettings) {
-          const parsedSettings = JSON.parse(savedSettings);
-          setSettings(parsedSettings);
-          if (currentSession === 'work') {
-            setTimeLeft(parsedSettings.workDuration * 60);
-            setTotalTime(parsedSettings.workDuration * 60);
-          }
+          setSettings(JSON.parse(savedSettings));
         }
         
         // Load history
@@ -368,84 +355,90 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           setIsDarkMode(JSON.parse(savedTheme));
         }
         
-        // Load streak data
+        // Load streak
         const savedStreak = await AsyncStorage.getItem(STREAK_STORAGE_KEY);
         if (savedStreak) {
           setStreak(JSON.parse(savedStreak));
         }
         
         // Load daily progress
-        const savedProgress = await AsyncStorage.getItem(DAILY_PROGRESS_KEY);
-        if (savedProgress) {
-          setDailyProgress(parseInt(savedProgress));
+        const savedDailyProgress = await AsyncStorage.getItem(DAILY_PROGRESS_KEY);
+        if (savedDailyProgress) {
+          setDailyProgress(parseInt(savedDailyProgress, 10));
         }
         
-        // Check if day has changed
-        checkAndResetDailyProgress();
+        // Initialize current date if needed
+        const lastDate = await AsyncStorage.getItem(LAST_DATE_KEY);
+        if (!lastDate) {
+          const currentDate = new Date().toISOString().split('T')[0];
+          await AsyncStorage.setItem(LAST_DATE_KEY, currentDate);
+        } else {
+          // Check if day has changed and reset if needed
+          await checkAndResetDailyProgress();
+        }
       } catch (error) {
-        console.error('Error loading saved data:', error);
+        console.error("Error loading saved data:", error);
       }
     };
     
     loadSavedData();
   }, []);
   
-  // Save settings when changed
+  // Save settings to AsyncStorage whenever they change
   useEffect(() => {
     const saveSettings = async () => {
       try {
         await AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
-        
-        // Reschedule reminder notification when settings change
-        if (settings.notificationsEnabled) {
-          scheduleRandomReminder();
-        } else {
-          await Notifications.cancelAllScheduledNotificationsAsync();
-        }
       } catch (error) {
-        console.error('Error saving settings:', error);
+        console.error("Error saving settings:", error);
       }
     };
     
     saveSettings();
   }, [settings]);
   
-  // Save history when changed
+  // Save session history to AsyncStorage whenever it changes
   useEffect(() => {
     const saveHistory = async () => {
       try {
         await AsyncStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(sessionHistory));
       } catch (error) {
-        console.error('Error saving history:', error);
+        console.error("Error saving history:", error);
       }
     };
     
     saveHistory();
   }, [sessionHistory]);
   
-  // Save theme when changed
+  // Save theme preference to AsyncStorage whenever it changes
   useEffect(() => {
     const saveTheme = async () => {
       try {
         await AsyncStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(isDarkMode));
       } catch (error) {
-        console.error('Error saving theme:', error);
+        console.error("Error saving theme:", error);
       }
     };
     
     saveTheme();
   }, [isDarkMode]);
   
-  // Timer logic
+  // Timer effect
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     
     if (isRunning && timeLeft > 0) {
       interval = setInterval(() => {
-        setTimeLeft(prevTime => prevTime - 1);
+        setTimeLeft(prevTime => {
+          if (prevTime <= 1) {
+            clearInterval(interval!);
+            handleSessionComplete();
+            return 0;
+          }
+          return prevTime - 1;
+        });
       }, 1000);
-    } else if (isRunning && timeLeft === 0) {
-      // Session completed
+    } else if (timeLeft === 0) {
       handleSessionComplete();
     }
     
@@ -455,93 +448,137 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [isRunning, timeLeft]);
   
   // Handle session completion
-  const handleSessionComplete = () => {
-    // Record finished session
-    if (sessionStartTime && currentSession === 'work') {
-      const sessionDurationMinutes = totalTime / 60; // convert seconds to minutes
-      
-      const newRecord: SessionRecord = {
-        type: currentSession,
-        duration: sessionDurationMinutes,
+  const handleSessionComplete = useCallback(() => {
+    // Record completed session if it was a work session
+    if (currentSession === 'work' && sessionStartTime) {
+      const endTime = new Date().toISOString();
+      const sessionRecord: SessionRecord = {
+        type: 'work',
+        duration: settings.workDuration,
         startTime: sessionStartTime,
-        endTime: new Date().toISOString(),
+        endTime,
       };
       
-      setSessionHistory(prev => [newRecord, ...prev]);
+      setSessionHistory(prev => [...prev, sessionRecord]);
       
-      // Update daily progress with completed work session
-      checkDailyGoal(sessionDurationMinutes);
+      // Update daily progress
+      checkDailyGoal(settings.workDuration);
     }
     
-    // Reset session start time
-    setSessionStartTime(null);
+    // Sound notification or vibration could be added here
     
-    // Determine next session
+    // Update completed sessions counter if work session
     if (currentSession === 'work') {
-      const newCompletedSessions = completedSessions + 1;
-      setCompletedSessions(newCompletedSessions);
-      
-      if (newCompletedSessions % settings.sessionsBeforeLongBreak === 0) {
-        // Time for a long break
-        setCurrentSession('longBreak');
-        setTimeLeft(settings.longBreakDuration * 60);
-        setTotalTime(settings.longBreakDuration * 60);
-      } else {
-        // Time for a short break
-        setCurrentSession('shortBreak');
-        setTimeLeft(settings.shortBreakDuration * 60);
-        setTotalTime(settings.shortBreakDuration * 60);
-      }
-    } else {
-      // Break is over, back to work
-      setCurrentSession('work');
-      setTimeLeft(settings.workDuration * 60);
-      setTotalTime(settings.workDuration * 60);
+      setCompletedSessions(prev => prev + 1);
     }
-  };
+    
+    // Determine next session type
+    let nextSession: SessionType;
+    let nextDuration: number;
+    
+    if (currentSession === 'work') {
+      // After work, determine if it should be a short or long break
+      if (completedSessions % settings.sessionsBeforeLongBreak === settings.sessionsBeforeLongBreak - 1) {
+        nextSession = 'longBreak';
+        nextDuration = settings.longBreakDuration * 60;
+      } else {
+        nextSession = 'shortBreak';
+        nextDuration = settings.shortBreakDuration * 60;
+      }
+      
+      // Auto-start break if enabled
+      setIsRunning(settings.autoStartBreak || false);
+    } else {
+      // After a break, go back to work
+      nextSession = 'work';
+      nextDuration = settings.workDuration * 60;
+      
+      // Auto-start work if enabled
+      setIsRunning(settings.autoStartWork || false);
+    }
+    
+    // Update session state
+    setCurrentSession(nextSession);
+    setTimeLeft(nextDuration);
+    setTotalTime(nextDuration);
+    
+    // Set session start time if starting a work session
+    if (nextSession === 'work') {
+      setSessionStartTime(new Date().toISOString());
+    } else {
+      setSessionStartTime(null);
+    }
+    
+    // Show notification based on next session
+    if (settings.notificationsEnabled) {
+      const title = nextSession === 'work' 
+        ? "Time to focus!" 
+        : nextSession === 'shortBreak'
+          ? "Take a short break!"
+          : "Take a long break!";
+          
+      const body = nextSession === 'work'
+        ? `Start your ${settings.workDuration}-minute focus session.`
+        : nextSession === 'shortBreak'
+          ? `Enjoy your ${settings.shortBreakDuration}-minute break.`
+          : `Enjoy your ${settings.longBreakDuration}-minute break. You've earned it!`;
+      
+      Notifications.scheduleNotificationAsync({
+        content: { title, body },
+        trigger: null, // Send immediately
+      });
+    }
+  }, [currentSession, sessionStartTime, settings, completedSessions, checkDailyGoal]);
   
-  // Start timer
-  const startTimer = () => {
+  // Timer controls
+  const startTimer = useCallback(() => {
     if (!isRunning) {
       setIsRunning(true);
       
-      // If starting a new session, record the start time
-      if (!sessionStartTime) {
+      // Record start time for work sessions
+      if (currentSession === 'work' && !sessionStartTime) {
         setSessionStartTime(new Date().toISOString());
       }
     }
-  };
+  }, [isRunning, currentSession, sessionStartTime]);
   
-  // Pause timer
-  const pauseTimer = () => {
-    setIsRunning(false);
-  };
-  
-  // Reset timer
-  const resetTimer = () => {
-    setIsRunning(false);
-    setSessionStartTime(null);
-    
-    if (currentSession === 'work') {
-      setTimeLeft(settings.workDuration * 60);
-      setTotalTime(settings.workDuration * 60);
-    } else if (currentSession === 'shortBreak') {
-      setTimeLeft(settings.shortBreakDuration * 60);
-      setTotalTime(settings.shortBreakDuration * 60);
-    } else {
-      setTimeLeft(settings.longBreakDuration * 60);
-      setTotalTime(settings.longBreakDuration * 60);
+  const pauseTimer = useCallback(() => {
+    if (isRunning) {
+      setIsRunning(false);
     }
-  };
+  }, [isRunning]);
   
-  // Skip current session
-  const skipSession = () => {
+  const resetTimer = useCallback(() => {
     setIsRunning(false);
-    setSessionStartTime(null);
+    
+    // Reset timer based on current session type
+    switch (currentSession) {
+      case 'work':
+        setTimeLeft(settings.workDuration * 60);
+        setTotalTime(settings.workDuration * 60);
+        break;
+      case 'shortBreak':
+        setTimeLeft(settings.shortBreakDuration * 60);
+        setTotalTime(settings.shortBreakDuration * 60);
+        break;
+      case 'longBreak':
+        setTimeLeft(settings.longBreakDuration * 60);
+        setTotalTime(settings.longBreakDuration * 60);
+        break;
+    }
     
     if (currentSession === 'work') {
-      // Skipping work, go to break
-      if ((completedSessions + 1) % settings.sessionsBeforeLongBreak === 0) {
+      setSessionStartTime(null);
+    }
+  }, [currentSession, settings]);
+  
+  const skipSession = useCallback(() => {
+    setIsRunning(false);
+    
+    // Skip to next session
+    if (currentSession === 'work') {
+      // If we're skipping a work session, record it as completed
+      if (completedSessions % settings.sessionsBeforeLongBreak === settings.sessionsBeforeLongBreak - 1) {
         setCurrentSession('longBreak');
         setTimeLeft(settings.longBreakDuration * 60);
         setTotalTime(settings.longBreakDuration * 60);
@@ -551,70 +588,99 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setTotalTime(settings.shortBreakDuration * 60);
       }
       
+      // Increment completed sessions counter
       setCompletedSessions(prev => prev + 1);
+      setSessionStartTime(null);
     } else {
-      // Skipping break, go back to work
+      // Skipping a break, go back to work
       setCurrentSession('work');
       setTimeLeft(settings.workDuration * 60);
       setTotalTime(settings.workDuration * 60);
+      setSessionStartTime(new Date().toISOString());
     }
-  };
+  }, [currentSession, completedSessions, settings]);
   
-  // Set custom duration for the next session
-  const setCustomDuration = (minutes: number) => {
-    if (minutes > 0 && !isRunning) {
-      const seconds = minutes * 60;
-      setTimeLeft(seconds);
-      setTotalTime(seconds);
-    }
-  };
-  
-  // Update settings
-  const updateSettings = (newSettings: Partial<PomodoroContextType['settings']>) => {
-    const updatedSettings = { ...settings, ...newSettings };
-    setSettings(updatedSettings);
-    
-    // If timer is not running, update timeLeft based on current session
-    if (!isRunning) {
-      if (currentSession === 'work') {
-        setTimeLeft(updatedSettings.workDuration * 60);
-        setTotalTime(updatedSettings.workDuration * 60);
-      } else if (currentSession === 'shortBreak') {
-        setTimeLeft(updatedSettings.shortBreakDuration * 60);
-        setTotalTime(updatedSettings.shortBreakDuration * 60);
-      } else {
-        setTimeLeft(updatedSettings.longBreakDuration * 60);
-        setTotalTime(updatedSettings.longBreakDuration * 60);
+  const setCustomDuration = useCallback((minutes: number) => {
+    if (minutes > 0) {
+      setTimeLeft(minutes * 60);
+      setTotalTime(minutes * 60);
+      
+      // If timer is running, reset session start time
+      if (isRunning && currentSession === 'work') {
+        setSessionStartTime(new Date().toISOString());
       }
     }
-  };
+  }, [isRunning, currentSession]);
   
-  // Toggle dark mode
-  const toggleDarkMode = () => {
+  const updateSettings = useCallback((newSettings: Partial<PomodoroContextType['settings']>) => {
+    setSettings(prevSettings => {
+      const updatedSettings = { ...prevSettings, ...newSettings };
+      
+      // If timer is not running, update current timer based on session type
+      if (!isRunning) {
+        switch (currentSession) {
+          case 'work':
+            setTimeLeft(updatedSettings.workDuration * 60);
+            setTotalTime(updatedSettings.workDuration * 60);
+            break;
+          case 'shortBreak':
+            setTimeLeft(updatedSettings.shortBreakDuration * 60);
+            setTotalTime(updatedSettings.shortBreakDuration * 60);
+            break;
+          case 'longBreak':
+            setTimeLeft(updatedSettings.longBreakDuration * 60);
+            setTotalTime(updatedSettings.longBreakDuration * 60);
+            break;
+        }
+      }
+      
+      return updatedSettings;
+    });
+  }, [isRunning, currentSession]);
+  
+  const toggleDarkMode = useCallback(() => {
     setIsDarkMode(prev => !prev);
-  };
+  }, []);
+  
+  // Memoize context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => ({
+    isRunning,
+    currentSession,
+    timeLeft,
+    totalTime,
+    settings,
+    sessionHistory,
+    isDarkMode,
+    dailyProgress,
+    streak,
+    startTimer,
+    pauseTimer,
+    resetTimer,
+    skipSession,
+    setCustomDuration,
+    updateSettings,
+    toggleDarkMode,
+  }), [
+    isRunning,
+    currentSession,
+    timeLeft,
+    totalTime,
+    settings,
+    sessionHistory,
+    isDarkMode,
+    dailyProgress,
+    streak,
+    startTimer,
+    pauseTimer,
+    resetTimer,
+    skipSession,
+    setCustomDuration,
+    updateSettings,
+    toggleDarkMode,
+  ]);
   
   return (
-    <PomodoroContext.Provider
-      value={{
-        isRunning,
-        currentSession,
-        timeLeft,
-        totalTime,
-        settings,
-        sessionHistory,
-        isDarkMode,
-        dailyProgress,
-        streak,
-        startTimer,
-        pauseTimer,
-        resetTimer,
-        skipSession,
-        setCustomDuration,
-        updateSettings,
-        toggleDarkMode,
-      }}
-    >
+    <PomodoroContext.Provider value={contextValue}>
       {children}
     </PomodoroContext.Provider>
   );

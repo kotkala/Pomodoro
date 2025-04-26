@@ -1,74 +1,103 @@
 import React from 'react';
-import { render, renderHook } from '@testing-library/react-native';
-import { Text } from 'react-native';
-import { ThemeProvider, useTheme } from '../app/context/ThemeContext';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { render } from '@testing-library/react-native';
+import { Text, View } from 'react-native';
+import { ThemeProvider, useTheme, lightTheme, darkTheme } from '../app/context/ThemeContext';
+import { PomodoroProvider } from '../app/context/PomodoroContext';
 
-// Test Component that uses the ThemeContext
+// Mock the PomodoroContext
+jest.mock('../app/context/PomodoroContext', () => {
+  const originalModule = jest.requireActual('../app/context/PomodoroContext');
+  
+  return {
+    ...originalModule,
+    usePomodoroContext: jest.fn(() => ({
+      isDarkMode: false, // Default to light mode in tests
+      toggleDarkMode: jest.fn(),
+    })),
+  };
+});
+
+// Component that uses the theme
 const TestComponent = () => {
   const theme = useTheme();
   
   return (
-    <>
-      <Text testID="background">{theme.background}</Text>
-      <Text testID="text">{theme.text}</Text>
-      <Text testID="primary">{theme.primary}</Text>
-    </>
+    <View>
+      <Text testID="background" style={{ color: theme.background }}>Background</Text>
+      <Text testID="text" style={{ color: theme.text }}>Text</Text>
+      <Text testID="primary" style={{ color: theme.primary }}>Primary</Text>
+      <Text testID="secondary" style={{ color: theme.secondary }}>Secondary</Text>
+      <Text testID="accent" style={{ color: theme.accent }}>Accent</Text>
+      <Text testID="border" style={{ color: theme.border }}>Border</Text>
+    </View>
   );
 };
 
 describe('ThemeContext', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-  
-  it('provides default theme values', () => {
+  it('provides light theme values by default', () => {
     const { getByTestId } = render(
-      <ThemeProvider>
-        <TestComponent />
-      </ThemeProvider>
+      <PomodoroProvider>
+        <ThemeProvider>
+          <TestComponent />
+        </ThemeProvider>
+      </PomodoroProvider>
     );
     
-    // Check if theme values are provided
-    expect(getByTestId('background').props.children).toBeTruthy();
-    expect(getByTestId('text').props.children).toBeTruthy();
-    expect(getByTestId('primary').props.children).toBeTruthy();
+    expect(getByTestId('background').props.style.color).toBe(lightTheme.background);
+    expect(getByTestId('text').props.style.color).toBe(lightTheme.text);
+    expect(getByTestId('primary').props.style.color).toBe(lightTheme.primary);
+    expect(getByTestId('secondary').props.style.color).toBe(lightTheme.secondary);
+    expect(getByTestId('accent').props.style.color).toBe(lightTheme.accent);
+    expect(getByTestId('border').props.style.color).toBe(lightTheme.border);
   });
   
-  it('provides hook to access theme', () => {
-    const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <ThemeProvider>{children}</ThemeProvider>
-    );
-    
-    const { result } = renderHook(() => useTheme(), { wrapper });
-    
-    // Check if the theme object has the expected properties
-    expect(result.current).toHaveProperty('background');
-    expect(result.current).toHaveProperty('text');
-    expect(result.current).toHaveProperty('primary');
-    expect(result.current).toHaveProperty('secondary');
-    expect(result.current).toHaveProperty('accent');
-    expect(result.current).toHaveProperty('backgroundSecondary');
-    expect(result.current).toHaveProperty('textSecondary');
-    expect(result.current).toHaveProperty('border');
-  });
-  
-  it('attempts to load saved theme preference', async () => {
-    // Mock AsyncStorage to return a theme preference
-    AsyncStorage.getItem.mockImplementation((key) => {
-      if (key === 'pomodoro_theme') {
-        return Promise.resolve(JSON.stringify(true)); // Dark mode
-      }
-      return Promise.resolve(null);
+  it('provides dark theme values when dark mode is enabled', () => {
+    // Override the mock to return dark mode
+    const usePomodoroContextMock = require('../app/context/PomodoroContext').usePomodoroContext;
+    usePomodoroContextMock.mockReturnValue({
+      isDarkMode: true,
+      toggleDarkMode: jest.fn(),
     });
     
-    render(
-      <ThemeProvider>
-        <TestComponent />
-      </ThemeProvider>
+    const { getByTestId } = render(
+      <PomodoroProvider>
+        <ThemeProvider>
+          <TestComponent />
+        </ThemeProvider>
+      </PomodoroProvider>
     );
     
-    // Check if AsyncStorage.getItem was called with the correct key
-    expect(AsyncStorage.getItem).toHaveBeenCalledWith('pomodoro_theme');
+    expect(getByTestId('background').props.style.color).toBe(darkTheme.background);
+    expect(getByTestId('text').props.style.color).toBe(darkTheme.text);
+    expect(getByTestId('primary').props.style.color).toBe(darkTheme.primary);
+    expect(getByTestId('secondary').props.style.color).toBe(darkTheme.secondary);
+    expect(getByTestId('accent').props.style.color).toBe(darkTheme.accent);
+    expect(getByTestId('border').props.style.color).toBe(darkTheme.border);
+  });
+  
+  it('light theme has correct values', () => {
+    expect(lightTheme.background).toBe('#F5F5F5');
+    expect(lightTheme.backgroundSecondary).toBe('#FFFFFF');
+    expect(lightTheme.text).toBe('#333333');
+    expect(lightTheme.textSecondary).toBe('#666666');
+    expect(lightTheme.primary).toBe('#FF5252');
+    expect(lightTheme.secondary).toBe('#3F51B5');
+    expect(lightTheme.accent).toBe('#4CAF50');
+    expect(lightTheme.border).toBe('#E0E0E0');
+    expect(lightTheme.error).toBe('#F44336');
+    expect(lightTheme.success).toBe('#4CAF50');
+  });
+  
+  it('dark theme has correct values', () => {
+    expect(darkTheme.background).toBe('#121212');
+    expect(darkTheme.backgroundSecondary).toBe('#1E1E1E');
+    expect(darkTheme.text).toBe('#FFFFFF');
+    expect(darkTheme.textSecondary).toBe('#AAAAAA');
+    expect(darkTheme.primary).toBe('#FF5252');
+    expect(darkTheme.secondary).toBe('#7986CB');
+    expect(darkTheme.accent).toBe('#81C784');
+    expect(darkTheme.border).toBe('#333333');
+    expect(darkTheme.error).toBe('#E57373');
+    expect(darkTheme.success).toBe('#81C784');
   });
 }); 

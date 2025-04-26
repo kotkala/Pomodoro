@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,14 +23,14 @@ const Timer: React.FC = () => {
   const theme = useTheme();
   
   // Format time as MM:SS
-  const formatTime = (seconds: number): string => {
+  const formatTime = useCallback((seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
+  }, []);
   
   // Get session name
-  const getSessionName = (type: SessionType): string => {
+  const getSessionName = useCallback((type: SessionType): string => {
     switch (type) {
       case 'work':
         return 'Focus';
@@ -41,19 +41,22 @@ const Timer: React.FC = () => {
       default:
         return 'Focus';
     }
-  };
+  }, []);
   
   // Calculate progress for the circle
-  const progress = (totalTime - timeLeft) / totalTime;
+  const progress = useMemo(() => (totalTime - timeLeft) / totalTime, [totalTime, timeLeft]);
   const radius = 120;
   const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference * (1 - progress);
+  const strokeDashoffset = useMemo(() => circumference * (1 - progress), [circumference, progress]);
   
   // Calculate daily goal progress
-  const dailyGoalProgress = Math.min(100, Math.round((dailyProgress / settings.dailyGoalMinutes) * 100));
+  const dailyGoalProgress = useMemo(() => 
+    Math.min(100, Math.round((dailyProgress / settings.dailyGoalMinutes) * 100)), 
+    [dailyProgress, settings.dailyGoalMinutes]
+  );
   
   // Get color based on session type
-  const getSessionColor = (type: SessionType): string => {
+  const getSessionColor = useCallback((type: SessionType): string => {
     switch (type) {
       case 'work':
         return theme.primary;
@@ -64,9 +67,9 @@ const Timer: React.FC = () => {
       default:
         return theme.primary;
     }
-  };
+  }, [theme]);
   
-  const sessionColor = getSessionColor(currentSession);
+  const sessionColor = useMemo(() => getSessionColor(currentSession), [getSessionColor, currentSession]);
   
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -138,6 +141,7 @@ const Timer: React.FC = () => {
       
       <View style={styles.controls}>
         <TouchableOpacity 
+          testID="reset-button"
           style={[styles.button, { backgroundColor: theme.backgroundSecondary }]} 
           onPress={resetTimer}
         >
@@ -145,6 +149,7 @@ const Timer: React.FC = () => {
         </TouchableOpacity>
         
         <TouchableOpacity 
+          testID="start-button"
           style={[styles.mainButton, { backgroundColor: sessionColor }]} 
           onPress={isRunning ? pauseTimer : startTimer}
         >
@@ -156,6 +161,7 @@ const Timer: React.FC = () => {
         </TouchableOpacity>
         
         <TouchableOpacity 
+          testID="skip-button"
           style={[styles.button, { backgroundColor: theme.backgroundSecondary }]} 
           onPress={skipSession}
         >
