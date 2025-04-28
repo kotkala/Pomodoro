@@ -2,6 +2,8 @@ import React from 'react';
 import { View, Text, StyleSheet, FlatList } from 'react-native';
 import { usePomodoroContext, SessionRecord, SessionType } from '../context/PomodoroContext';
 import { useTheme } from '../context/ThemeContext';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const History: React.FC = () => {
   const { sessionHistory } = usePomodoroContext();
@@ -20,33 +22,81 @@ const History: React.FC = () => {
   };
   
   // Get icon and color for session type
-  const getSessionInfo = (type: SessionType): { label: string; color: string } => {
+  const getSessionInfo = (type: SessionType): { label: string; color: string; icon: string } => {
     switch (type) {
       case 'work':
-        return { label: 'Focus', color: theme.primary };
+        return { 
+          label: 'Focus Time', 
+          color: theme.primary,
+          icon: 'brain'
+        };
       case 'shortBreak':
-        return { label: 'Short Break', color: theme.secondary };
+        return { 
+          label: 'Short Break', 
+          color: theme.secondary,
+          icon: 'cafe'
+        };
       case 'longBreak':
-        return { label: 'Long Break', color: theme.accent };
+        return { 
+          label: 'Long Break', 
+          color: theme.accent,
+          icon: 'leaf'
+        };
       default:
-        return { label: 'Focus', color: theme.primary };
+        return { 
+          label: 'Focus Time', 
+          color: theme.primary,
+          icon: 'brain'
+        };
     }
   };
   
-  // Calculate duration between two dates
-  const calculateDuration = (startTime: string, endTime: string): number => {
-    const start = new Date(startTime).getTime();
-    const end = new Date(endTime).getTime();
-    return Math.round((end - start) / 60000); // Convert ms to minutes
+  // Group sessions by date
+  const groupSessionsByDate = () => {
+    const grouped: { [key: string]: SessionRecord[] } = {};
+    
+    sessionHistory.forEach(session => {
+      const date = new Date(session.startTime).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+      
+      if (!grouped[date]) {
+        grouped[date] = [];
+      }
+      
+      grouped[date].push(session);
+    });
+    
+    return Object.entries(grouped).map(([date, sessions]) => ({
+      date,
+      sessions,
+      totalFocusTime: sessions
+        .filter(s => s.type === 'work')
+        .reduce((total, s) => total + s.duration, 0)
+    }));
   };
   
+  const groupedSessions = groupSessionsByDate();
+  
   // Render each history item
-  const renderItem = ({ item }: { item: SessionRecord }) => {
+  const renderSessionItem = ({ item }: { item: SessionRecord }) => {
     const sessionInfo = getSessionInfo(item.type);
     
     return (
-      <View style={[styles.historyItem, { backgroundColor: theme.backgroundSecondary, borderColor: theme.border }]}>
-        <View style={[styles.sessionTypeIndicator, { backgroundColor: sessionInfo.color }]} />
+      <View style={[styles.historyItem, { 
+        backgroundColor: theme.backgroundSecondary, 
+        borderColor: theme.border,
+        shadowColor: sessionInfo.color,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+        elevation: 2
+      }]}>
+        <View style={[styles.sessionIconContainer, { backgroundColor: `${sessionInfo.color}20` }]}>
+          <Ionicons name={sessionInfo.icon} size={20} color={sessionInfo.color} />
+        </View>
         
         <View style={styles.sessionDetails}>
           <Text style={[styles.sessionType, { color: theme.text }]}>
@@ -54,12 +104,12 @@ const History: React.FC = () => {
           </Text>
           
           <Text style={[styles.sessionTime, { color: theme.textSecondary }]}>
-            {formatDate(item.startTime)}
+            {formatDate(item.startTime).split(',')[1].trim()}
           </Text>
         </View>
         
-        <View style={styles.durationContainer}>
-          <Text style={[styles.duration, { color: theme.text }]}>
+        <View style={[styles.durationContainer, { backgroundColor: `${sessionInfo.color}15` }]}>
+          <Text style={[styles.duration, { color: sessionInfo.color }]}>
             {item.duration} min
           </Text>
         </View>
@@ -67,11 +117,42 @@ const History: React.FC = () => {
     );
   };
   
+  // Render each day group
+  const renderDayGroup = ({ item }: { item: { date: string, sessions: SessionRecord[], totalFocusTime: number } }) => {
+    return (
+      <View style={styles.dayContainer}>
+        <View style={styles.dayHeader}>
+          <View style={styles.dateContainer}>
+            <Ionicons name="calendar" size={18} color={theme.textSecondary} style={styles.calendarIcon} />
+            <Text style={[styles.dateText, { color: theme.text }]}>{item.date}</Text>
+          </View>
+          
+          <View style={styles.totalTimeContainer}>
+            <Ionicons name="time" size={16} color={theme.primary} style={styles.timeIcon} />
+            <Text style={[styles.totalTimeText, { color: theme.primary }]}>
+              {item.totalFocusTime} min of focus
+            </Text>
+          </View>
+        </View>
+        
+        {item.sessions.map((session, index) => (
+          <View key={`${session.startTime}-${index}`}>
+            {renderSessionItem({ item: session })}
+          </View>
+        ))}
+      </View>
+    );
+  };
+  
   // Empty list component
   const EmptyListComponent = () => (
     <View style={styles.emptyContainer}>
+      <Ionicons name="hourglass-outline" size={60} color={`${theme.textSecondary}80`} style={styles.emptyIcon} />
+      <Text style={[styles.emptyTitle, { color: theme.text }]}>
+        No sessions yet
+      </Text>
       <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-        No sessions completed yet. Start your first Pomodoro!
+        Complete your first focus session to see your history here.
       </Text>
     </View>
   );
@@ -81,12 +162,12 @@ const History: React.FC = () => {
       <Text style={[styles.title, { color: theme.text }]}>History</Text>
       
       <FlatList
-        data={sessionHistory}
-        renderItem={renderItem}
-        keyExtractor={(item, index) => `session-${index}-${item.startTime}`}
+        data={groupedSessions}
+        renderItem={renderDayGroup}
+        keyExtractor={(item) => item.date}
         ListEmptyComponent={EmptyListComponent}
         style={styles.list}
-        contentContainerStyle={sessionHistory.length === 0 ? styles.emptyList : undefined}
+        contentContainerStyle={groupedSessions.length === 0 ? styles.emptyList : { paddingBottom: 20 }}
       />
     </View>
   );
@@ -95,12 +176,13 @@ const History: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
+    padding: 20,
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 16,
+    marginBottom: 20,
+    textAlign: 'center',
   },
   list: {
     flex: 1,
@@ -115,21 +197,66 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 32,
   },
+  emptyIcon: {
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
   emptyText: {
     fontSize: 16,
     textAlign: 'center',
+    lineHeight: 22,
+  },
+  dayContainer: {
+    marginBottom: 24,
+  },
+  dayHeader: {
+    marginBottom: 12,
+  },
+  dateContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  dateText: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  calendarIcon: {
+    marginRight: 8,
+  },
+  totalTimeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 26,
+  },
+  totalTimeText: {
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+  timeIcon: {
+    marginRight: 6,
   },
   historyItem: {
     flexDirection: 'row',
-    borderRadius: 8,
+    borderRadius: 20,
     marginBottom: 12,
-    padding: 12,
+    padding: 14,
+    marginLeft: 10,
+    marginRight: 4,
     borderWidth: 1,
+    alignItems: 'center',
   },
-  sessionTypeIndicator: {
-    width: 4,
-    borderRadius: 2,
-    marginRight: 12,
+  sessionIconContainer: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
   },
   sessionDetails: {
     flex: 1,
@@ -143,12 +270,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   durationContainer: {
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
     justifyContent: 'center',
-    paddingLeft: 8,
   },
   duration: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 

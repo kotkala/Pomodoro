@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { usePomodoroContext, SessionRecord } from '../context/PomodoroContext';
 import { useTheme } from '../context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 interface DayData {
   day: string;
@@ -96,24 +97,58 @@ const Statistics: React.FC = () => {
   // Calculate daily goal progress percentage
   const goalProgress = Math.min(100, Math.round((dailyProgress / settings.dailyGoalMinutes) * 100));
   
+  // Get motivational message based on weekly performance
+  const getMotivationalMessage = () => {
+    if (weeklyStats.totalMinutes === 0) return "Start your focus journey this week! ✨";
+    if (weeklyStats.totalMinutes < 60) return "Great start to your focus practice! 🌱";
+    if (weeklyStats.totalMinutes < 180) return "You're building a solid focus habit! 🌟";
+    if (weeklyStats.totalMinutes < 300) return "Impressive focus consistency this week! 🔥";
+    return "Outstanding dedication to your focus practice! 🏆";
+  };
+  
   return (
     <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
       <Text style={[styles.title, { color: theme.text }]}>Statistics</Text>
       
+      {/* Motivational Message */}
+      <View style={[styles.motivationContainer, { 
+        backgroundColor: theme.backgroundSecondary, 
+        borderColor: theme.border,
+        shadowColor: theme.text,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        elevation: 2
+      }]}>
+        <Text style={[styles.motivationText, { color: theme.textSecondary }]}>
+          {getMotivationalMessage()}
+        </Text>
+      </View>
+      
       {/* Streak Section */}
-      <View style={[styles.streakContainer, { backgroundColor: theme.backgroundSecondary, borderColor: theme.border }]}>
+      <View style={[styles.streakContainer, { 
+        backgroundColor: theme.backgroundSecondary, 
+        borderColor: theme.border,
+        shadowColor: theme.text,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        elevation: 2
+      }]}>
         <View style={styles.streakHeader}>
           <Ionicons name="flame" size={24} color="#FF9500" />
           <Text style={[styles.streakTitle, { color: theme.text }]}>Your Streak</Text>
         </View>
         
         <View style={styles.streakStats}>
-          <View style={styles.streakStat}>
+          <View style={[styles.streakStat, {
+            backgroundColor: 'rgba(255, 149, 0, 0.1)',
+            borderRadius: 20,
+            padding: 15
+          }]}>
             <Text style={[styles.streakValue, { color: "#FF9500" }]}>{streak.currentStreak}</Text>
             <Text style={[styles.streakLabel, { color: theme.textSecondary }]}>Current Streak</Text>
           </View>
-          
-          <View style={styles.streakDivider} />
           
           <View style={styles.streakStat}>
             <Text style={[styles.streakValue, { color: "#FF9500" }]}>{streak.highestStreak}</Text>
@@ -133,47 +168,99 @@ const Statistics: React.FC = () => {
           </View>
           
           <View style={[styles.goalProgressBar, { backgroundColor: theme.border }]}>
-            <View 
-              style={[
-                styles.goalProgressFill,
-                { backgroundColor: goalProgress >= 100 ? "#4CAF50" : theme.primary, width: `${goalProgress}%` }
-              ]}
+            <LinearGradient
+              colors={goalProgress >= 100 ? ['#81C784', '#4CAF50'] : ['#E57373', '#F06292']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[styles.goalProgressFill, { width: `${goalProgress}%` }]}
             />
           </View>
         </View>
       </View>
       
       {/* Weekly Overview */}
-      <View style={[styles.statsContainer, { backgroundColor: theme.backgroundSecondary, borderColor: theme.border }]}>
-        <View style={styles.statItem}>
+      <View style={[styles.statsContainer, { 
+        backgroundColor: theme.backgroundSecondary, 
+        borderColor: theme.border,
+        shadowColor: theme.text,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        elevation: 2
+      }]}>
+        <View style={[styles.statItem, {
+          backgroundColor: `${theme.primary}10`,
+          borderRadius: 16,
+          padding: 12
+        }]}>
+          <View style={styles.statIconContainer}>
+            <Ionicons name="time" size={22} color={theme.primary} />
+          </View>
           <Text style={[styles.statValue, { color: theme.primary }]}>{weeklyStats.totalMinutes}</Text>
           <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Minutes</Text>
         </View>
         
-        <View style={styles.statItem}>
-          <Text style={[styles.statValue, { color: theme.primary }]}>{weeklyStats.totalSessions}</Text>
+        <View style={[styles.statItem, {
+          backgroundColor: `${theme.secondary}10`,
+          borderRadius: 16,
+          padding: 12
+        }]}>
+          <View style={styles.statIconContainer}>
+            <Ionicons name="checkbox" size={22} color={theme.secondary} />
+          </View>
+          <Text style={[styles.statValue, { color: theme.secondary }]}>{weeklyStats.totalSessions}</Text>
           <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Sessions</Text>
         </View>
         
-        <View style={styles.statItem}>
-          <Text style={[styles.statValue, { color: theme.primary }]}>{Math.round(weeklyStats.avgDailyMinutes)}</Text>
+        <View style={[styles.statItem, {
+          backgroundColor: `${theme.accent}10`,
+          borderRadius: 16,
+          padding: 12
+        }]}>
+          <View style={styles.statIconContainer}>
+            <Ionicons name="calendar" size={22} color={theme.accent} />
+          </View>
+          <Text style={[styles.statValue, { color: theme.accent }]}>{Math.round(weeklyStats.avgDailyMinutes)}</Text>
           <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Avg Min/Day</Text>
         </View>
       </View>
       
       {/* Most Productive Day */}
       {weeklyStats.mostProductiveMinutes > 0 && (
-        <View style={[styles.productiveDayContainer, { backgroundColor: theme.backgroundSecondary, borderColor: theme.border }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Most Productive Day</Text>
+        <View style={[styles.productiveDayContainer, { 
+          backgroundColor: theme.backgroundSecondary, 
+          borderColor: theme.border,
+          shadowColor: theme.text,
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.05,
+          shadowRadius: 8,
+          elevation: 2
+        }]}>
+          <View style={styles.sectionTitleRow}>
+            <Ionicons name="trophy" size={22} color={theme.primary} style={styles.sectionIcon} />
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Most Productive Day</Text>
+          </View>
+          
           <Text style={[styles.productiveDay, { color: theme.primary }]}>
-            {weeklyStats.mostProductiveDay} ({weeklyStats.mostProductiveMinutes} min)
+            {weeklyStats.mostProductiveDay} ({weeklyStats.mostProductiveMinutes} minutes)
           </Text>
         </View>
       )}
       
       {/* Weekly Chart */}
-      <View style={[styles.chartContainer, { backgroundColor: theme.backgroundSecondary, borderColor: theme.border }]}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Daily Focus Time</Text>
+      <View style={[styles.chartContainer, { 
+        backgroundColor: theme.backgroundSecondary, 
+        borderColor: theme.border,
+        shadowColor: theme.text,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        elevation: 2
+      }]}>
+        <View style={styles.sectionTitleRow}>
+          <Ionicons name="bar-chart" size={22} color={theme.primary} style={styles.sectionIcon} />
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Daily Focus Time</Text>
+        </View>
         
         <View style={styles.chart}>
           {weeklyData.map((day, index) => (
@@ -185,15 +272,22 @@ const Statistics: React.FC = () => {
               </View>
               
               <View style={styles.barWrapper}>
-                <View 
-                  style={[
-                    styles.bar, 
-                    { 
-                      backgroundColor: theme.primary,
-                      height: (day.workMinutes / maxMinutes) * 150,
-                    }
-                  ]} 
-                />
+                {day.workMinutes > 0 ? (
+                  <LinearGradient
+                    colors={[theme.primary, '#F48FB1']}
+                    style={[
+                      styles.bar, 
+                      { height: (day.workMinutes / maxMinutes) * 150 }
+                    ]}
+                  />
+                ) : (
+                  <View 
+                    style={[
+                      styles.emptyBar,
+                      { backgroundColor: theme.border }
+                    ]} 
+                  />
+                )}
               </View>
               
               <Text style={[styles.barLabel, { color: theme.textSecondary }]}>{day.day}</Text>
@@ -202,6 +296,25 @@ const Statistics: React.FC = () => {
           ))}
         </View>
       </View>
+      
+      {/* Focus Tip */}
+      <View style={[styles.tipContainer, { 
+        backgroundColor: theme.backgroundSecondary, 
+        borderColor: theme.border,
+        shadowColor: theme.text,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
+        elevation: 2
+      }]}>
+        <View style={styles.tipHeader}>
+          <Ionicons name="bulb" size={22} color="#FFB74D" style={styles.tipIcon} />
+          <Text style={[styles.tipTitle, { color: theme.text }]}>Focus Tip</Text>
+        </View>
+        <Text style={[styles.tipText, { color: theme.textSecondary }]}>
+          Try the 2-minute rule: If a task takes less than 2 minutes, do it immediately instead of scheduling it for later. This helps reduce mental clutter. ✨
+        </Text>
+      </View>
     </ScrollView>
   );
 };
@@ -209,53 +322,65 @@ const Statistics: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
+    padding: 20,
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 16,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  motivationContainer: {
+    padding: 16,
+    marginBottom: 20,
+    borderRadius: 25,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  motivationText: {
+    fontSize: 16,
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
   streakContainer: {
-    borderRadius: 8,
+    padding: 20,
+    marginBottom: 20,
+    borderRadius: 25,
     borderWidth: 1,
-    padding: 16,
-    marginBottom: 16,
   },
   streakHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   streakTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginLeft: 8,
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginLeft: 10,
   },
   streakStats: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 16,
+    justifyContent: 'space-between',
+    marginBottom: 20,
   },
   streakStat: {
     alignItems: 'center',
-    flex: 1,
+    width: '48%',
   },
   streakValue: {
     fontSize: 32,
     fontWeight: 'bold',
+    marginBottom: 4,
   },
   streakLabel: {
     fontSize: 14,
-    marginTop: 4,
   },
   streakDivider: {
     width: 1,
-    height: '100%',
-    backgroundColor: '#E0E0E0',
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
   },
   goalProgressContainer: {
-    marginTop: 8, 
+    marginTop: 10,
   },
   goalTextRow: {
     flexDirection: 'row',
@@ -270,23 +395,28 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   goalProgressBar: {
-    height: 8,
-    borderRadius: 4,
+    height: 10,
+    borderRadius: 5,
     overflow: 'hidden',
   },
   goalProgressFill: {
     height: '100%',
+    borderRadius: 5,
   },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    borderRadius: 8,
+    padding: 20,
+    marginBottom: 20,
+    borderRadius: 25,
     borderWidth: 1,
-    padding: 16,
-    marginBottom: 16,
   },
   statItem: {
     alignItems: 'center',
+    width: '30%',
+  },
+  statIconContainer: {
+    marginBottom: 8,
   },
   statValue: {
     fontSize: 24,
@@ -294,61 +424,105 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   statLabel: {
-    fontSize: 14,
+    fontSize: 12,
+    textAlign: 'center',
   },
   productiveDayContainer: {
-    borderRadius: 8,
+    padding: 20,
+    marginBottom: 20,
+    borderRadius: 25,
     borderWidth: 1,
-    padding: 16,
-    marginBottom: 16,
+  },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionIcon: {
+    marginRight: 8,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  productiveDay: {
     fontSize: 18,
     fontWeight: 'bold',
   },
+  productiveDay: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
   chartContainer: {
-    borderRadius: 8,
+    padding: 20,
+    marginBottom: 20,
+    borderRadius: 25,
     borderWidth: 1,
-    padding: 16,
   },
   chart: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
     height: 200,
-    marginTop: 8,
+    marginTop: 10,
   },
   barContainer: {
     alignItems: 'center',
-    flex: 1,
+    width: '13%',
   },
   barLabelContainer: {
     height: 20,
+    justifyContent: 'flex-end',
   },
   barValue: {
-    fontSize: 12,
+    fontSize: 10,
     textAlign: 'center',
   },
   barWrapper: {
     height: 150,
     justifyContent: 'flex-end',
+    width: '100%',
+    alignItems: 'center',
   },
   bar: {
-    width: 20,
-    borderRadius: 10,
+    width: '80%',
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 6,
     minHeight: 4,
   },
+  emptyBar: {
+    width: '80%',
+    height: 4,
+    borderRadius: 2,
+  },
   barLabel: {
-    fontSize: 14,
-    marginTop: 8,
+    fontSize: 12,
+    marginTop: 6,
+    textAlign: 'center',
   },
   barDate: {
-    fontSize: 12,
+    fontSize: 10,
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  tipContainer: {
+    padding: 20,
+    marginBottom: 20,
+    borderRadius: 25,
+    borderWidth: 1,
+  },
+  tipHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  tipIcon: {
+    marginRight: 8,
+  },
+  tipTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  tipText: {
+    fontSize: 14,
+    lineHeight: 22,
   },
 });
 

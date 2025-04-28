@@ -238,6 +238,7 @@ export const PomodoroProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       },
       trigger: {
         seconds: secondsUntilNotification,
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
       },
     });
   };
